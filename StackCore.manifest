@@ -1,0 +1,13 @@
+{
+	"autodeskProduct":	"Fusion",
+	"type":	"addin",
+	"author":	"John Girgis",
+	"description":	{
+		"":	"GD&T Tolerance Stack-up analysis."
+	},
+	"version":	"0.0.0",
+	"runOnStartup":	false,
+	"supportedOS":	"windows|mac",
+	"editEnabled":	true,
+	"iconFilename":	"logo2.png"
+}
