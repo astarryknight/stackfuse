@@ -36,6 +36,8 @@ class Icons:
         self.conc_icon = os.path.join(ICON_FOLDER, 'conc')
         self.lin_icon = os.path.join(ICON_FOLDER, 'dim_lin')
         self.ang_icon = os.path.join(ICON_FOLDER, 'dim_ang')
+        self.displ_icon = os.path.join(ICON_FOLDER, 'displ')
+        self.cyl_icon = os.path.join(ICON_FOLDER, 'cyl')
 
 ic=Icons()
 
@@ -387,8 +389,8 @@ class Tab:
 
         # Add dropdown
         dropdown = self.sectionInputs.addDropDownCommandInput('dropdown_0'+id, 'Tol. Type', adsk.core.DropDownStyles.LabeledIconDropDownStyle)
-        dropdown.listItems.add('Perpendicular', True, ic.perp_icon)
-        dropdown.listItems.add('Concentric', False, ic.conc_icon)
+        dropdown.listItems.add('displacement', True, ic.displ_icon)
+        dropdown.listItems.add('cylindrical', False, ic.cyl_icon)
 
         # Add value inputs
         default_unit = app.activeProduct.unitsManager.defaultLengthUnits
@@ -447,8 +449,8 @@ class Tab:
 
             # Add dropdown
             dropdown = self.sectionInputs.addDropDownCommandInput('dropdown_'+id+self.id, 'Tol. Type', adsk.core.DropDownStyles.LabeledIconDropDownStyle)
-            dropdown.listItems.add('Perpendicular', True, ic.perp_icon)
-            dropdown.listItems.add('Concentric', False, ic.conc_icon)
+            dropdown.listItems.add('displacement', True, ic.displ_icon)
+            dropdown.listItems.add('cylindrical', False, ic.cyl_icon)
 
             # Add value inputs
             default_unit = app.activeProduct.unitsManager.defaultLengthUnits
