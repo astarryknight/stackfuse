@@ -9,5 +9,5 @@
 	"runOnStartup":	false,
 	"supportedOS":	"windows|mac",
 	"editEnabled":	true,
-	"iconFilename":	"logo2.png"
+	"iconFilename":	"stackfuse.png"
 }
