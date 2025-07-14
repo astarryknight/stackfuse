@@ -1,7 +1,11 @@
-# StackFuse
-Fusion 360 addin to compute tolerance stack-up analyses using Monte Carlo simulations.
+<div align="center">
+<img src="./stackfuse.png" width="400">
+<p>Fusion 360 addin to compute tolerance stack-up analyses using Monte Carlo simulations.<p>
+</div>
 
-![Helix Cover](./stackfuse.png)
+<h1></h1>
+
+<br>
 
 # Installation
 [Click here to download the Add-in](./dist/stackfuse.zip)
