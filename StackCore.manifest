@@ -3,9 +3,9 @@
 	"type":	"addin",
 	"author":	"John Girgis",
 	"description":	{
-		"":	"GD&T Tolerance Stack-up analysis."
+		"":	"Interactive Tolerance Stack-up analysis."
 	},
-	"version":	"0.0.0",
+	"version":	"0.1.0",
 	"runOnStartup":	false,
 	"supportedOS":	"windows|mac",
 	"editEnabled":	true,
