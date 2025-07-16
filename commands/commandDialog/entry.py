@@ -1,5 +1,6 @@
 import adsk.core
 import os
+import math
 from ...lib import fusionAddInUtils as futil
 from ... import config
 import json
@@ -17,6 +18,7 @@ IS_PROMOTED = True
 # init global variables
 root_inputs = None
 tabs = None
+metro_tabs = None
 
 # TODO *** Define the location where the command button will be created. ***
 # This is done by specifying the workspace, the tab, and the panel, and the 
@@ -95,6 +97,8 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 
     global tabs
     tabs = [] #array for tabs - will be needed later on
+    global metro_tabs
+    metro_tabs = []
 
     inputs = args.command.commandInputs
 
@@ -120,6 +124,9 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     button_row.listItems.add('Linear', False, ic.lin_icon)
     button_row.listItems.add('Angular', False, ic.ang_icon)
 
+    bool_value_input = t1.addBoolValueInput('metrology_input', 'Metrology?', True, '', False)
+    bool_value_input.tooltip = "Check this box if using metrology data to test as-built conditions."
+
     t1.addIntegerSpinnerCommandInput("tab_manager", "Num. Components", 1, 5, 1, 1)
 
     # Pre-create all possible tabs
@@ -128,6 +135,15 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
         tab = Tab(f"Comp. {i+1}", id, inputs)
         tab.object.isVisible = (i == 0)  # Show only the first by default
         tabs.append(tab)
+
+
+    # Pre-create metrology tabs
+    for i in range(5):
+        id = f"component_metro_{i}"
+        tab = MetrologyTab(f"Comp. {i+1}", id, inputs)
+        tab.object.isVisible = False
+        metro_tabs.append(tab)
+    
 
     # Hook up handlers
     futil.add_handler(args.command.inputChanged, command_input_changed, local_handlers=local_handlers)
@@ -170,121 +186,186 @@ def command_execute(args: adsk.core.CommandEventArgs):
     ref_planes = inputs.itemById('ref_planes')
     dim_type = inputs.itemById('dim_type')    
     tab_manager = inputs.itemById('tab_manager')
+    metrology = inputs.itemById('metrology_input')
 
     n_tabs=adsk.core.IntegerSpinnerCommandInput.cast(tab_manager).value
 
-    data = {
-        "main_plane": [],
-        "ref_plane": [],
-        "metric_type": "",
-        "components": []
-    }
+    # futil.log(ref_planes.selection(0).entity)
+    # futil.log(ref_planes.selection(1).entity)
 
-    futil.log(f"main plane vertices:")
-    # futil.log(f"{ref_planes.selection(0).entity.vertices.item(0).geometry.asArray()}")
-    # futil.log(f"{ref_planes.selection(0).entity.vertices.item(1).geometry.asArray()}")
-    # futil.log(f"{ref_planes.selection(0).entity.vertices.item(2).geometry.asArray()}")
+    if adsk.core.ButtonRowCommandInput.cast(dim_type).selectedItem.name == 'Linear':
+        m = pointsOnPlane(ref_planes, 0)
+        r = pointsOnPlane(ref_planes, 1)
+        dy=[]
+        for i in range(3):
+            t=[]
+            for j in range(3):
+                t.append(m[i][j]-r[i][j])
+            dy.append(t[1])
+        futil.log(f"{dy}")
+        for d in dy:
+            if not math.isclose(dy[0], d, abs_tol=1.0):
+                ui.messageBox("Error: Main and Reference Planes are not Parallel!")
+                return
+        # futil.log(f"{m} - {r}")
+        #return
 
-    arr = []
-
-    # arr.append(ref_planes.selection(0).entity.vertices.item(0).geometry.asArray())
-    # arr.append(ref_planes.selection(0).entity.vertices.item(1).geometry.asArray())
-    # arr.append(ref_planes.selection(0).entity.vertices.item(2).geometry.asArray())
-
-    #data['main_plane'] = arr
-    data['main_plane'] = pointsOnPlane(ref_planes, 0)
-
-    futil.log("\nref plane vertices:")
-    futil.log(f"{ref_planes.selection(1).entity.vertices.item(0).geometry.asArray()}")
-    futil.log(f"{ref_planes.selection(1).entity.vertices.item(1).geometry.asArray()}")
-    futil.log(f"{ref_planes.selection(1).entity.vertices.item(2).geometry.asArray()}")
-
-    arr = []
-
-    arr.append(ref_planes.selection(1).entity.vertices.item(0).geometry.asArray())
-    arr.append(ref_planes.selection(1).entity.vertices.item(1).geometry.asArray())
-    arr.append(ref_planes.selection(1).entity.vertices.item(2).geometry.asArray())
-
-    data['ref_plane'] = arr
-
-    futil.log("\nmeasurement type:")
-    futil.log(f"{adsk.core.ButtonRowCommandInput.cast(dim_type).selectedItem.name}")
-    data['metric_type'] = adsk.core.ButtonRowCommandInput.cast(dim_type).selectedItem.name
-
-    futil.log("\n number of components:")
-    futil.log(f"{n_tabs}")
-
-    # TODO - make a data object for tolerances and for components - then populate for each run in the loop and that should take care of all the JSOn formatting DONE!
-    # After that, work on integration/parsing with python script, then maybe work on some more tolerance types and more specific datum definitions? IP
-    # then finally try to package it together (ie publish package straight to pip, figure out a way to run it all here - maybe flask is a potential candidate but i dont wanna do that...)
-
-    components = []
-    for i in range(n_tabs):
-        component={
-            "name": "",
-            "plane": [],
-            "axis": [],
-            "tolerances": []
+    if metrology.value:
+        futil.log("wer're in metrology land!")
+        data = {
+            "type": "metrology",
+            "main_plane": [],
+            "ref_plane": [],
+            "metric_type": "",
+            "components": []
         }
-        n=tabs[i]
-        name = inputs.itemById('text_box_'+n.id).text
-        vertices = n.pts
-        axes = n.axs
-        futil.log(f"Component: {name}")
-        component['name'] = name
 
-        futil.log("vertices:")
-        arr = []
+        data['main_plane'] = pointsOnPlane(ref_planes, 0)        
+        data['ref_plane'] = pointsOnPlane(ref_planes, 1)
+        data['metric_type'] = adsk.core.ButtonRowCommandInput.cast(dim_type).selectedItem.name
 
-        arr.append(vertices.selection(0).entity.geometry.asArray())
-        arr.append(vertices.selection(1).entity.geometry.asArray())
-        arr.append(vertices.selection(2).entity.geometry.asArray())
+        components = []
+        for i in range(n_tabs):
+            component={
+                "name": "",
+                "points": []
+            }
+            n=metro_tabs[i]
+            name = inputs.itemById('text_box_metro_'+n.id).text
+            #vertices = n.pts
+            futil.log(f"Component: {name}")
+            component['name'] = name
 
-        component['plane'] = arr
+            futil.log("vertices:")
+            arr = []
 
-        futil.log(f"{vertices.selection(0).entity.geometry.asArray()}")
-        futil.log(f"{vertices.selection(1).entity.geometry.asArray()}")
-        futil.log(f"{vertices.selection(2).entity.geometry.asArray()}")
+            points = []
+            for i in range(3):
+                point={
+                    "coordinates":"",
+                    "dx":"",
+                    "dy":"",
+                    "dz":""
+                }
 
-        arr = []
+                vertex = inputs.itemById(f'metro_point_{i}_{n.id}')
+                point['coordinates'] = vertex.selection(0).entity.geometry.asArray()
 
-        arr.append(axes.selection(0).entity.geometry.direction.asArray())
-        arr.append(axes.selection(1).entity.geometry.direction.asArray())
-        arr.append(axes.selection(2).entity.geometry.direction.asArray())
+                sectionInputs = n.sections[i].children
 
-        component['axis'] = arr
+                point['dx'] = sectionInputs.item(1).value * 10
+                point['dy'] = sectionInputs.item(2).value * 10
+                point['dz'] = sectionInputs.item(3).value * 10
 
-        futil.log("\naxes: ")
-        futil.log(f"{axes.selection(0).entity.geometry.direction.asArray()}")
-        futil.log(f"{axes.selection(1).entity.geometry.direction.asArray()}")
-        futil.log(f"{axes.selection(2).entity.geometry.direction.asArray()}")
+                points.append(point)
+            
+            component["points"] = points
 
-        futil.log(f"\nnumber of tolerances: {n.spinner.value}")
+            components.append(component)
 
-        tolerances = []
-        for j in range(n.spinner.value):
-            tolerance= {
-                            "type": "",
-                            "tol": [],
-                        }
-            tol=[]
-            for k in range(3):
-                item = n.sectionInputs.item((k+2)+(4*j))
-                if(item.classType() == adsk.core.DropDownCommandInput.classType()):
-                    futil.log(f"Tolerance type: {item.selectedItem.name}")
-                    tolerance['type'] = item.selectedItem.name
-                elif(item.classType() == adsk.core.ValueCommandInput.classType()):
-                    futil.log(f"tolerance: {item.value*10}")
-                    tol.append(item.value*10)
-            tolerance['tol'] = sorted(tol)
-            tolerances.append(tolerance)
-        
-        component['tolerances'] = tolerances
-        components.append(component)
+        data['components'] = components
+
+        save_json_safe(data)
     
-    data['components'] = components
+    else:
+        data = {
+            "type": "CAD",
+            "main_plane": [],
+            "ref_plane": [],
+            "metric_type": "",
+            "components": []
+        }
 
-    save_json_safe(data)
+        futil.log(f"main plane vertices:")
+
+        #data['main_plane'] = arr
+        data['main_plane'] = pointsOnPlane(ref_planes, 0)
+
+        # futil.log("\nref plane vertices:")
+        # futil.log(f"{ref_planes.selection(1).entity.vertices.item(0).geometry.asArray()}")
+        # futil.log(f"{ref_planes.selection(1).entity.vertices.item(1).geometry.asArray()}")
+        # futil.log(f"{ref_planes.selection(1).entity.vertices.item(2).geometry.asArray()}")
+
+        data['ref_plane'] = pointsOnPlane(ref_planes, 1)
+
+        futil.log("\nmeasurement type:")
+        futil.log(f"{adsk.core.ButtonRowCommandInput.cast(dim_type).selectedItem.name}")
+        data['metric_type'] = adsk.core.ButtonRowCommandInput.cast(dim_type).selectedItem.name
+
+        futil.log("\n number of components:")
+        futil.log(f"{n_tabs}")
+
+        # TODO - make a data object for tolerances and for components - then populate for each run in the loop and that should take care of all the JSOn formatting DONE!
+        # After that, work on integration/parsing with python script, then maybe work on some more tolerance types and more specific datum definitions? IP
+        # then finally try to package it together (ie publish package straight to pip, figure out a way to run it all here - maybe flask is a potential candidate but i dont wanna do that...)
+
+        components = []
+        for i in range(n_tabs):
+            component={
+                "name": "",
+                "plane": [],
+                "axis": [],
+                "tolerances": []
+            }
+            n=tabs[i]
+            name = inputs.itemById('text_box_'+n.id).text
+            vertices = n.pts
+            axes = n.axs
+            futil.log(f"Component: {name}")
+            component['name'] = name
+
+            futil.log("vertices:")
+            arr = []
+
+            arr.append(vertices.selection(0).entity.geometry.asArray())
+            arr.append(vertices.selection(1).entity.geometry.asArray())
+            arr.append(vertices.selection(2).entity.geometry.asArray())
+
+            component['plane'] = arr
+
+            futil.log(f"{vertices.selection(0).entity.geometry.asArray()}")
+            futil.log(f"{vertices.selection(1).entity.geometry.asArray()}")
+            futil.log(f"{vertices.selection(2).entity.geometry.asArray()}")
+
+            arr = []
+
+            arr.append(axes.selection(0).entity.geometry.direction.asArray())
+            arr.append(axes.selection(1).entity.geometry.direction.asArray())
+            arr.append(axes.selection(2).entity.geometry.direction.asArray())
+
+            component['axis'] = arr
+
+            futil.log("\naxes: ")
+            futil.log(f"{axes.selection(0).entity.geometry.direction.asArray()}")
+            futil.log(f"{axes.selection(1).entity.geometry.direction.asArray()}")
+            futil.log(f"{axes.selection(2).entity.geometry.direction.asArray()}")
+
+            futil.log(f"\nnumber of tolerances: {n.spinner.value}")
+
+            tolerances = []
+            for j in range(n.spinner.value):
+                tolerance= {
+                                "type": "",
+                                "tol": [],
+                            }
+                tol=[]
+                for k in range(3):
+                    item = n.sectionInputs.item((k+2)+(4*j))
+                    if(item.classType() == adsk.core.DropDownCommandInput.classType()):
+                        futil.log(f"Tolerance type: {item.selectedItem.name}")
+                        tolerance['type'] = item.selectedItem.name
+                    elif(item.classType() == adsk.core.ValueCommandInput.classType()):
+                        futil.log(f"tolerance: {item.value*10}")
+                        tol.append(item.value*10)
+                tolerance['tol'] = sorted(tol)
+                tolerances.append(tolerance)
+            
+            component['tolerances'] = tolerances
+            components.append(component)
+        
+        data['components'] = components
+
+        save_json_safe(data)
 
 
 
@@ -301,38 +382,36 @@ def command_input_changed(args: adsk.core.InputChangedEventArgs):
     changed_input = args.input
     inputs = args.inputs
 
+    metro_checkbox: adsk.core.BoolValueCommandInput = inputs.itemById('metrology_input')
+    tab_manager: adsk.core.IntegerSpinnerCommandInput = inputs.itemById('tab_manager')
+
+
     futil.log(f'{CMD_NAME} Input Changed Event fired from a change to {changed_input.id}')
 
     if "controller" in changed_input.id:#changed_input.classType() == adsk.core.IntegerSpinnerCommandInput:# and "controller" in changed_input.id:
-        #p('something changesd')
         for n in tabs:
             n.updateChildren()
 
-    elif changed_input.id == 'show_tab_checkbox':
-        checkbox = adsk.core.BoolValueCommandInput.cast(inputs.itemById('show_tab_checkbox'))
-        existing_tab = inputs.itemById('extra_tab')
-
-        if checkbox.value:
-            # Show the tab if it's not already added
-            if not existing_tab:
-                #ui.messageBox(f"Changed input f")
-                new_tab = inputs.addTabCommandInput('extra_tab', 'Extra Tab')
-                new_tab.children.addTextBoxCommandInput('info', 'Info', 'This is an extra tab.', 1, True)
-                args.firingEvent.sender.parentCommand.doExecutePreview()
-        else:
-            # Remove the tab if it exists
-            if existing_tab:
-                #ui.messageBox(f"Changed input d")
-                existing_tab.deleteMe()
-                args.firingEvent.sender.parentCommand.doExecutePreview()
-
     elif 'tab_manager' in changed_input.id:
         value = changed_input.value
-        for i, tab in enumerate(tabs):
-            tab.setEnabled(i < value)  # Show and enable first N tabs only
+        if metro_checkbox.value:
+            for i, tab in enumerate(metro_tabs):
+                tab.setEnabled(i < value)  # Show and enable first N tabs only
+        else:
+            for i, tab in enumerate(tabs):
+                tab.setEnabled(i < value)  # Show and enable first N tabs only
 
-    elif changed_input.id == 'axes_component_0':
-        futil.log(f"{changed_input.selection(0).entity.geometry.direction.asArray()}")
+    # switch between regular and metrology tabs
+    elif changed_input.id == "metrology_input":
+        ntabs = tab_manager.value
+        if metro_checkbox.value: # box is checked
+            for i in range(5):
+                tabs[i].setEnabled(False)
+                metro_tabs[i].setEnabled(i<ntabs)
+        else: # box is not checked
+            for i in range(5):
+                tabs[i].setEnabled(i<ntabs)
+                metro_tabs[i].setEnabled(False)
 
 def command_validate_input(args: adsk.core.ValidateInputsEventArgs):
     # Only validate inputs from the main tab (tab_main)
@@ -355,6 +434,64 @@ def command_destroy(args: adsk.core.CommandEventArgs):
 
 def p(msg):
     ui.messageBox(msg)
+
+
+class MetrologyTab:
+    def __init__(self, name: str, id: str, inputs):
+        self.name = name
+        self.id = id
+
+        self.object = inputs.addTabCommandInput(self.id, self.name)
+        self.c = self.object.children
+
+        self.cn = self.c.addTextBoxCommandInput('text_box_metro_'+id, 'Component Name', 'Component', 1, False)
+
+        self.sections = []
+
+        for i in range(3):
+            sectionGroup = self.c.addGroupCommandInput(f"metrology_group_{i}" , f"Point {i+1}")
+            sectionInputs = sectionGroup.children
+            self.sections.append(sectionGroup)
+
+            pts = sectionInputs.addSelectionInput(f'metro_point_{i}_{id}', 'Select a Point', 'Select a point to define one vertex of the component plane.')
+            pts.addSelectionFilter('Vertices')
+            pts.addSelectionFilter('ConstructionPoints')
+            pts.setSelectionLimits(1,1)
+
+            # Add value inputs
+            default_unit = app.activeProduct.unitsManager.defaultLengthUnits
+            sectionInputs.addValueInput(f'delta_x_{i}_{id}', '∂x', default_unit, adsk.core.ValueInput.createByString('0.0'))
+            sectionInputs.addValueInput(f'delta_y_{i}_{id}', '∂y', default_unit, adsk.core.ValueInput.createByString('0.0'))
+            sectionInputs.addValueInput(f'delta_z_{i}_{id}', '∂z', default_unit, adsk.core.ValueInput.createByString('0.0'))
+        
+
+    def setEnabled(self, enabled: bool):
+        self.object.isVisible = enabled
+        self.object.isEnabled = enabled
+        for i in range(self.c.count):
+            input = self.c.item(i)
+            input.isEnabled = enabled
+
+        # Dynamically bypass validation for SelectionInputs
+        for i in range(len(self.sections)):
+            pt = root_inputs.itemById(f'metro_point_{i}_{self.id}')
+            if pt:
+                if enabled:
+                    pt.setSelectionLimits(1, 1)
+                else:
+                    pt.setSelectionLimits(0, 9999)  # Allow 0 when hidden
+
+            sectionGroup = self.sections[i]
+            sectionInputs = sectionGroup.children
+            if sectionGroup:
+                sectionGroup.isEnabled = enabled
+                for i in range(sectionInputs.count):
+                    sectionInputs.item(i).isEnabled = enabled
+    
+    def kill_tab(self):
+        self.object.deleteMe()
+
+
 
 class Tab:
     def __init__(self, name: str, id: str, inputs):
