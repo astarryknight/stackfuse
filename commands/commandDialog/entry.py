@@ -1,6 +1,7 @@
 import adsk.core
 import os
 import math
+import random
 from ...lib import fusionAddInUtils as futil
 from ... import config
 import json
@@ -172,6 +173,40 @@ def pointsOnPlane(ref, n: int):
     return [pt1.asArray(), pt2.asArray(), pt3.asArray()]
 
 
+def vectorFromPoints(p1, p2):
+    return adsk.core.Vector3D.create(
+        p2[0] - p1[0],
+        p2[1] - p1[1],
+        p2[2] - p1[2]
+    )
+
+def arePlanesParallel(plane1_pts, plane2_pts, tol=1e-6):
+    """
+    Checks if the planes defined by two sets of 3 points are parallel.
+
+    plane1_pts and plane2_pts are lists of three points each,
+    where each point is a list or tuple of 3 floats: [x, y, z].
+    """
+    if len(plane1_pts) != 3 or len(plane2_pts) != 3:
+        raise ValueError("Each plane must be defined by exactly 3 points.")
+
+    # Create two vectors on each plane
+    v1a = vectorFromPoints(plane1_pts[0], plane1_pts[1])
+    v1b = vectorFromPoints(plane1_pts[0], plane1_pts[2])
+    normal1 = v1a.crossProduct(v1b)
+    normal1.normalize()
+
+    v2a = vectorFromPoints(plane2_pts[0], plane2_pts[1])
+    v2b = vectorFromPoints(plane2_pts[0], plane2_pts[2])
+    normal2 = v2a.crossProduct(v2b)
+    normal2.normalize()
+
+    # Check if normals are parallel (angle near 0 or 180 degrees)
+    dot = normal1.dotProduct(normal2)
+    return abs(abs(dot) - 1.0) < tol  # dot = ±1 means vectors are parallel
+
+
+
 # This event handler is called when the user clicks the OK button in the command dialog or 
 # is immediately called after the created event not command inputs were created for the dialog.
 def command_execute(args: adsk.core.CommandEventArgs):
@@ -196,19 +231,15 @@ def command_execute(args: adsk.core.CommandEventArgs):
     if adsk.core.ButtonRowCommandInput.cast(dim_type).selectedItem.name == 'Linear':
         m = pointsOnPlane(ref_planes, 0)
         r = pointsOnPlane(ref_planes, 1)
-        dy=[]
-        for i in range(3):
-            t=[]
-            for j in range(3):
-                t.append(m[i][j]-r[i][j])
-            dy.append(t[1])
-        futil.log(f"{dy}")
-        for d in dy:
-            if not math.isclose(dy[0], d, abs_tol=1.0):
-                ui.messageBox("Error: Main and Reference Planes are not Parallel!")
-                return
-        # futil.log(f"{m} - {r}")
-        #return
+        
+        p = arePlanesParallel(m, r)
+
+        futil.log(f'{p}')
+
+        if( not p):
+            ui.messageBox("Error: Main and Reference Planes are not Parallel!")
+            return
+        
 
     if metrology.value:
         futil.log("wer're in metrology land!")
